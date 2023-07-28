@@ -4,6 +4,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::ptr::NonNull;
 
+use icrate::AppKit::NSCursor;
 use icrate::Foundation::{
     NSArray, NSAttributedString, NSAttributedStringKey, NSCopying, NSMutableAttributedString,
     NSObject, NSObjectProtocol, NSPoint, NSRange, NSRect, NSSize, NSString, NSUInteger,
@@ -15,8 +16,7 @@ use objc2::{class, declare_class, msg_send, msg_send_id, mutability, sel, ClassT
 
 use super::{
     appkit::{
-        NSApp, NSCursor, NSEvent, NSEventPhase, NSResponder, NSTextInputClient, NSTrackingRectTag,
-        NSView,
+        NSApp, NSEvent, NSEventPhase, NSResponder, NSTextInputClient, NSTrackingRectTag, NSView,
     },
     event::{code_to_key, code_to_location},
 };
@@ -36,7 +36,7 @@ use crate::{
         window::WinitWindow,
         DEVICE_ID,
     },
-    window::WindowId,
+    window::{CursorIcon, WindowId},
 };
 
 #[derive(Debug)]
@@ -49,7 +49,7 @@ impl Default for CursorState {
     fn default() -> Self {
         Self {
             visible: true,
-            cursor: Default::default(),
+            cursor: util::default_cursor(),
         }
     }
 }
@@ -275,7 +275,7 @@ declare_class!(
             if cursor_state.visible {
                 self.addCursorRect(bounds, &cursor_state.cursor);
             } else {
-                self.addCursorRect(bounds, &NSCursor::invisible());
+                self.addCursorRect(bounds, &util::invisible_cursor());
             }
         }
     }
@@ -853,7 +853,8 @@ impl WinitView {
             .unwrap_or_else(String::new)
     }
 
-    pub(super) fn set_cursor_icon(&self, icon: Id<NSCursor>) {
+    pub(super) fn set_cursor_icon(&self, icon: CursorIcon) {
+        let icon = util::cursor_from_icon(icon);
         let mut cursor_state = self.state.cursor_state.borrow_mut();
         cursor_state.cursor = icon;
     }

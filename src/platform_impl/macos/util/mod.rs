@@ -1,7 +1,9 @@
 #![allow(clippy::unnecessary_cast)]
 
 mod r#async;
+mod cursor;
 
+pub(crate) use self::cursor::*;
 pub(crate) use self::r#async::*;
 
 use core_graphics::display::CGDisplay;
