@@ -34,6 +34,7 @@ fn main() -> Result<(), impl std::error::Error> {
             }
             Event::RedrawRequested(_) => {
                 fill::fill_window(&window);
+                control_flow.set_exit();
             }
             _ => (),
         }

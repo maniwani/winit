@@ -1,6 +1,7 @@
 use once_cell::sync::Lazy;
 
 use icrate::ns_string;
+use icrate::AppKit::NSImage;
 use icrate::Foundation::{
     NSData, NSDictionary, NSNumber, NSObject, NSObjectProtocol, NSPoint, NSString,
 };
@@ -8,7 +9,6 @@ use objc2::rc::{DefaultId, Id};
 use objc2::runtime::Sel;
 use objc2::{extern_class, extern_methods, msg_send_id, mutability, sel, ClassType};
 
-use super::NSImage;
 use crate::window::CursorIcon;
 
 extern_class!(
@@ -93,7 +93,7 @@ extern_methods!(
             static CURSOR: Lazy<Id<NSCursor>> = Lazy::new(|| {
                 // TODO: Consider using `dataWithBytesNoCopy:`
                 let data = NSData::with_bytes(CURSOR_BYTES);
-                let image = NSImage::new_with_data(&data);
+                let image = unsafe { NSImage::initWithData(NSImage::alloc(), &data) }.unwrap();
                 NSCursor::new(&image, NSPoint::new(0.0, 0.0))
             });
 
@@ -154,7 +154,8 @@ extern_methods!(
             let cursor_path = root.stringByAppendingPathComponent(name);
 
             let pdf_path = cursor_path.stringByAppendingPathComponent(ns_string!("cursor.pdf"));
-            let image = NSImage::new_by_referencing_file(&pdf_path);
+            let image =
+                unsafe { NSImage::initByReferencingFile(NSImage::alloc(), &pdf_path) }.unwrap();
 
             // TODO: Handle PLists better
             let info_path = cursor_path.stringByAppendingPathComponent(ns_string!("info.plist"));
