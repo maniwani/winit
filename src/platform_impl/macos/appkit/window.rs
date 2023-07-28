@@ -22,15 +22,6 @@ extern_class!(
     }
 );
 
-// Documented as "Main Thread Only", but:
-// > Thread safe in that you can create and manage them on a secondary thread.
-// <https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/CocoaFundamentals/AddingBehaviortoaCocoaProgram/AddingBehaviorCocoa.html#//apple_ref/doc/uid/TP40002974-CH5-SW47>
-// <https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/Multithreading/ThreadSafetySummary/ThreadSafetySummary.html#//apple_ref/doc/uid/10000057i-CH12-123364>
-//
-// So could in theory be `Send`, and perhaps also `Sync` - but we would like
-// interior mutability on windows, since that's just much easier, and in that
-// case, they can't be!
-
 extern_methods!(
     unsafe impl NSWindow {
         #[method(frame)]

@@ -2,15 +2,14 @@
 use std::cell::Cell;
 use std::ptr::{self, NonNull};
 
+use icrate::AppKit::NSWindowOcclusionStateVisible;
 use icrate::Foundation::{NSArray, NSObject, NSSize, NSString};
 use objc2::declare::{Ivar, IvarDrop};
 use objc2::rc::{autoreleasepool, Id};
 use objc2::runtime::Object;
 use objc2::{class, declare_class, msg_send, msg_send_id, mutability, sel, ClassType};
 
-use super::appkit::{
-    NSApplicationPresentationOptions, NSFilenamesPboardType, NSPasteboard, NSWindowOcclusionState,
-};
+use super::appkit::{NSApplicationPresentationOptions, NSFilenamesPboardType, NSPasteboard};
 use crate::{
     dpi::{LogicalPosition, LogicalSize},
     event::{Event, WindowEvent},
@@ -383,7 +382,7 @@ declare_class!(
                 !self
                     .window
                     .occlusionState()
-                    .contains(NSWindowOcclusionState::NSWindowOcclusionStateVisible),
+                    .contains(NSWindowOcclusionStateVisible),
             ))
         }
 
