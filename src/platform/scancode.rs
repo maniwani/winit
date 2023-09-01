@@ -28,3 +28,13 @@ pub trait KeyCodeExtScancode {
     ///                    `8` to get the value you wanted.
     fn from_scancode(scancode: u32) -> KeyCode;
 }
+
+impl KeyCodeExtScancode for KeyCode {
+    fn to_scancode(self) -> Option<u32> {
+        crate::platform_impl::keycode_to_scancode(self)
+    }
+
+    fn from_scancode(scancode: u32) -> KeyCode {
+        crate::platform_impl::scancode_to_keycode(scancode)
+    }
+}

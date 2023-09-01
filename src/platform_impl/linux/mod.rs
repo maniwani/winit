@@ -19,17 +19,14 @@ use crate::platform::x11::XlibErrorHook;
 use crate::{
     dpi::{PhysicalPosition, PhysicalSize, Position, Size},
     error::{EventLoopError, ExternalError, NotSupportedError, OsError as RootOsError},
-    event::{Event, KeyEvent},
+    event::Event,
     event_loop::{
         AsyncRequestSerial, ControlFlow, DeviceEvents, EventLoopClosed,
         EventLoopWindowTarget as RootELW,
     },
     icon::Icon,
-    keyboard::{Key, KeyCode},
-    platform::{
-        modifier_supplement::KeyEventExtModifierSupplement, pump_events::PumpStatus,
-        scancode::KeyCodeExtScancode,
-    },
+    keyboard::Key,
+    platform::pump_events::PumpStatus,
     window::{
         ActivationToken, CursorGrabMode, CursorIcon, ImePurpose, ResizeDirection, Theme,
         UserAttentionType, WindowAttributes, WindowButtons, WindowLevel,
@@ -40,6 +37,7 @@ pub use x11::XNotSupported;
 #[cfg(x11_platform)]
 use x11::{util::WindowType as XWindowType, X11Error, XConnection, XError};
 
+pub(crate) use self::common::keymap::{keycode_to_scancode, scancode_to_keycode};
 pub(crate) use crate::icon::RgbaIcon as PlatformIcon;
 pub(crate) use crate::platform_impl::Fullscreen;
 
@@ -643,31 +641,6 @@ impl Window {
 pub struct KeyEventExtra {
     pub key_without_modifiers: Key,
     pub text_with_all_modifiers: Option<SmolStr>,
-}
-
-impl KeyEventExtModifierSupplement for KeyEvent {
-    #[inline]
-    fn text_with_all_modifiers(&self) -> Option<&str> {
-        self.platform_specific
-            .text_with_all_modifiers
-            .as_ref()
-            .map(|s| s.as_str())
-    }
-
-    #[inline]
-    fn key_without_modifiers(&self) -> Key {
-        self.platform_specific.key_without_modifiers.clone()
-    }
-}
-
-impl KeyCodeExtScancode for KeyCode {
-    fn from_scancode(scancode: u32) -> KeyCode {
-        common::keymap::scancode_to_keycode(scancode)
-    }
-
-    fn to_scancode(self) -> Option<u32> {
-        common::keymap::keycode_to_scancode(self)
-    }
 }
 
 /// Hooks for X11 errors.

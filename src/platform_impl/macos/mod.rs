@@ -20,7 +20,7 @@ mod window_delegate;
 use std::fmt;
 
 pub(crate) use self::{
-    event::KeyEventExtra,
+    event::{keycode_to_scancode, scancode_to_keycode, KeyEventExtra},
     event_loop::{
         EventLoop, EventLoopProxy, EventLoopWindowTarget, PlatformSpecificEventLoopAttributes,
     },
