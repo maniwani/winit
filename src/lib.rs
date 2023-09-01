@@ -139,7 +139,8 @@
 #![deny(clippy::all)]
 #![cfg_attr(feature = "cargo-clippy", deny(warnings))]
 // Doc feature labels can be tested locally by running RUSTDOCFLAGS="--cfg=docsrs" cargo +nightly doc
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_auto_cfg, doc_cfg_hide))]
+#![cfg_attr(docsrs, doc(cfg_hide(doc)))]
 #![allow(clippy::missing_safety_doc)]
 
 #[allow(unused_imports)]

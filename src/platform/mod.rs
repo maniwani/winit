@@ -1,38 +1,24 @@
 //! Contains traits with platform-specific methods in them.
 //!
-//! Contains the follow OS-specific modules:
-//!
-//!  - `android`
-//!  - `ios`
-//!  - `macos`
-//!  - `unix`
-//!  - `windows`
-//!  - `web`
-//!
-//! And the following platform-specific modules:
-//!
-//! - `run_ondemand` (available on `windows`, `unix`, `macos`, `android`)
-//! - `pump_events` (available on `windows`, `unix`, `macos`, `android`)
-//!
-//! However only the module corresponding to the platform you're compiling to will be available.
+//! Only the module corresponding to the platform you're compiling to will be available.
 
-#[cfg(android_platform)]
+#[cfg(any(android_platform, doc))]
 pub mod android;
-#[cfg(ios_platform)]
+#[cfg(any(ios_platform, doc))]
 pub mod ios;
-#[cfg(macos_platform)]
+#[cfg(any(macos_platform, doc))]
 pub mod macos;
-#[cfg(orbital_platform)]
+#[cfg(any(orbital_platform, doc))]
 pub mod orbital;
-#[cfg(any(x11_platform, wayland_platform))]
+#[cfg(any(x11_platform, wayland_platform, doc))]
 pub mod startup_notify;
-#[cfg(wayland_platform)]
+#[cfg(any(wayland_platform, doc))]
 pub mod wayland;
-#[cfg(wasm_platform)]
+#[cfg(any(wasm_platform, doc))]
 pub mod web;
-#[cfg(windows_platform)]
+#[cfg(any(windows_platform, doc))]
 pub mod windows;
-#[cfg(x11_platform)]
+#[cfg(any(x11_platform, doc))]
 pub mod x11;
 
 #[cfg(any(
@@ -40,7 +26,8 @@ pub mod x11;
     macos_platform,
     android_platform,
     x11_platform,
-    wayland_platform
+    wayland_platform,
+    doc,
 ))]
 pub mod run_ondemand;
 
@@ -49,9 +36,13 @@ pub mod run_ondemand;
     macos_platform,
     android_platform,
     x11_platform,
-    wayland_platform
+    wayland_platform,
+    doc,
 ))]
 pub mod pump_events;
 
+#[cfg(any(windows_platform, macos_platform, x11_platform, wayland_platform, doc))]
 pub mod modifier_supplement;
+
+#[cfg(any(windows_platform, macos_platform, x11_platform, wayland_platform, doc))]
 pub mod scancode;

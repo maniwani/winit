@@ -1,7 +1,5 @@
 use std::os::raw::c_void;
 
-use objc2::rc::Id;
-
 use crate::{
     event_loop::{EventLoopBuilder, EventLoopWindowTarget},
     monitor::MonitorHandle,
@@ -369,7 +367,9 @@ impl MonitorHandleExtMacOS for MonitorHandle {
     }
 
     fn ns_screen(&self) -> Option<*mut c_void> {
-        self.inner.ns_screen().map(|s| Id::as_ptr(&s) as _)
+        self.inner
+            .ns_screen()
+            .map(|s| objc2::rc::Id::as_ptr(&s) as _)
     }
 }
 

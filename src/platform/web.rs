@@ -33,7 +33,12 @@ use crate::event_loop::EventLoop;
 use crate::event_loop::EventLoopWindowTarget;
 use crate::window::{Window, WindowBuilder};
 
+#[cfg(wasm_platform)]
 use web_sys::HtmlCanvasElement;
+
+#[cfg(all(not(wasm_platform), doc))]
+#[doc(hidden)]
+pub struct HtmlCanvasElement(());
 
 pub trait WindowExtWebSys {
     /// Only returns the canvas if called from inside the window.

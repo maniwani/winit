@@ -15,7 +15,9 @@ use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use smol_str::SmolStr;
 
 #[cfg(x11_platform)]
-use crate::platform::x11::XlibErrorHook;
+use self::x11::{X11Error, XConnection, XError, XNotSupported};
+#[cfg(x11_platform)]
+use crate::platform::x11::{WindowType as XWindowType, XlibErrorHook};
 use crate::{
     dpi::{PhysicalPosition, PhysicalSize, Position, Size},
     error::{EventLoopError, ExternalError, NotSupportedError, OsError as RootOsError},
@@ -32,20 +34,16 @@ use crate::{
         UserAttentionType, WindowAttributes, WindowButtons, WindowLevel,
     },
 };
-#[cfg(x11_platform)]
-pub use x11::XNotSupported;
-#[cfg(x11_platform)]
-use x11::{util::WindowType as XWindowType, X11Error, XConnection, XError};
 
 pub(crate) use self::common::keymap::{keycode_to_scancode, scancode_to_keycode};
 pub(crate) use crate::icon::RgbaIcon as PlatformIcon;
 pub(crate) use crate::platform_impl::Fullscreen;
 
-pub mod common;
+pub(crate) mod common;
 #[cfg(wayland_platform)]
-pub mod wayland;
+pub(crate) mod wayland;
 #[cfg(x11_platform)]
-pub mod x11;
+pub(crate) mod x11;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub(crate) enum Backend {

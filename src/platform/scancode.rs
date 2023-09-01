@@ -1,5 +1,3 @@
-#![cfg(any(windows_platform, macos_platform, x11_platform, wayland_platform))]
-
 use crate::keyboard::KeyCode;
 
 // TODO: Describe what this value contains for each platform

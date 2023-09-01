@@ -3,7 +3,7 @@ use crate::{
     window::{Window, WindowBuilder},
 };
 
-use android_activity::{AndroidApp, ConfigurationRef, Rect};
+use self::activity::{AndroidApp, ConfigurationRef, Rect};
 
 /// Additional methods on [`EventLoop`] that are specific to Android.
 pub trait EventLoopExtAndroid {}
@@ -84,5 +84,16 @@ impl<T> EventLoopBuilderExtAndroid for EventLoopBuilder<T> {
 /// use winit::platform::android::activity::AndroidApp;
 /// ```
 pub mod activity {
+    #[cfg(android_platform)]
     pub use android_activity::*;
+
+    #[cfg(all(not(android_platform), doc))]
+    #[doc(hidden)]
+    pub struct Rect(());
+    #[cfg(all(not(android_platform), doc))]
+    #[doc(hidden)]
+    pub struct ConfigurationRef(());
+    #[cfg(all(not(android_platform), doc))]
+    #[doc(hidden)]
+    pub struct AndroidApp(());
 }

@@ -13,7 +13,7 @@ categories = ["gui"]
 rust-version = "1.65.0"
 
 [package.metadata.docs.rs]
-features = ["serde"]
+features = ["serde", "mint"]
 default-target = "x86_64-unknown-linux-gnu"
 # These are all tested in CI
 targets = [
