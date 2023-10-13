@@ -17,6 +17,18 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+#[derive(Debug, Clone)]
+pub(crate) struct OwnedWindowHandle {}
+
+impl OwnedWindowHandle {
+    #[cfg(feature = "rwh_06")]
+    pub(crate) fn new_parent_window(_handle: rwh_06::WindowHandle<'_>) -> Self {
+        // Parent windows are currently unsupported, though owned window
+        // handles would be implementable.
+        Self {}
+    }
+}
+
 pub struct Window {
     inner: Dispatcher<Inner>,
 }

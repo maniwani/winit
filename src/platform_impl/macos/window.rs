@@ -68,7 +68,8 @@ impl Window {
     ) -> Result<Self, RootOsError> {
         let mtm = MainThreadMarker::new()
             .expect("windows can only be created on the main thread on macOS");
-        let (window, _delegate) = autoreleasepool(|_| WinitWindow::new(attributes, pl_attribs))?;
+        let (window, _delegate) =
+            autoreleasepool(|_| WinitWindow::new(mtm, attributes, pl_attribs))?;
         Ok(Window {
             window: MainThreadBound::new(window, mtm),
             _delegate: MainThreadBound::new(_delegate, mtm),
@@ -106,6 +107,40 @@ impl From<WindowId> for u64 {
 impl From<u64> for WindowId {
     fn from(raw_id: u64) -> Self {
         Self(raw_id as usize)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct OwnedWindowHandle {
+    ns_view: MainThreadBound<Id<NSView>>,
+}
+
+impl Clone for OwnedWindowHandle {
+    fn clone(&self) -> Self {
+        Self {
+            ns_view: MainThreadMarker::run_on_main(|mtm| {
+                MainThreadBound::new(self.ns_view.get(mtm).clone(), mtm)
+            }),
+        }
+    }
+}
+
+impl OwnedWindowHandle {
+    #[cfg(feature = "rwh_06")]
+    pub(crate) fn new_parent_window(handle: rwh_06::WindowHandle<'_>) -> Self {
+        let mtm =
+            MainThreadMarker::new().expect("can only have handles on macOS on the main thread");
+        let ns_view = match handle.as_raw() {
+            rwh_06::RawWindowHandle::AppKit(handle) => {
+                // SAFETY: Taking `WindowHandle<'_>` ensures that the pointer is valid.
+                // Unwrap is fine, since the pointer comes from `NonNull`.
+                unsafe { Id::retain(handle.ns_view.as_ptr().cast()) }.unwrap()
+            }
+            handle => panic!("invalid window handle {handle:?} on macOS"),
+        };
+        Self {
+            ns_view: MainThreadBound::new(ns_view, mtm),
+        }
     }
 }
 
@@ -289,6 +324,7 @@ impl Drop for SharedStateMutexGuard<'_> {
 impl WinitWindow {
     #[allow(clippy::type_complexity)]
     fn new(
+        mtm: MainThreadMarker,
         attrs: WindowAttributes,
         pl_attrs: PlatformSpecificWindowBuilderAttributes,
     ) -> Result<(Id<Self>, Id<WinitWindowDelegate>), RootOsError> {
@@ -448,25 +484,16 @@ impl WinitWindow {
         })
         .ok_or_else(|| os_error!(OsError::CreationError("Couldn't create `NSWindow`")))?;
 
-        #[cfg(feature = "rwh_06")]
-        match attrs.parent_window {
-            Some(rwh_06::RawWindowHandle::AppKit(handle)) => {
-                // SAFETY: Caller ensures the pointer is valid or NULL
-                // Unwrap is fine, since the pointer comes from `NonNull`.
-                let parent_view: Id<NSView> =
-                    unsafe { Id::retain(handle.ns_view.as_ptr().cast()) }.unwrap();
-                let parent = parent_view.window().ok_or_else(|| {
-                    os_error!(OsError::CreationError(
-                        "parent view should be installed in a window"
-                    ))
-                })?;
+        if let Some(parent_window) = attrs.parent_window {
+            let parent = parent_window.ns_view.get(mtm).window().ok_or_else(|| {
+                os_error!(OsError::CreationError(
+                    "parent view should be installed in a window"
+                ))
+            })?;
 
-                // SAFETY: We know that there are no parent -> child -> parent cycles since the only place in `winit`
-                // where we allow making a window a child window is right here, just after it's been created.
-                unsafe { parent.addChildWindow(&this, NSWindowOrderingMode::NSWindowAbove) };
-            }
-            Some(raw) => panic!("Invalid raw window handle {raw:?} on macOS"),
-            None => (),
+            // SAFETY: We know that there are no parent -> child -> parent cycles since the only place in `winit`
+            // where we allow making a window a child window is right here, just after it's been created.
+            unsafe { parent.addChildWindow(&this, NSWindowOrderingMode::NSWindowAbove) };
         }
 
         let view = WinitView::new(&this, pl_attrs.accepts_first_mouse);

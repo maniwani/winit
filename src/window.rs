@@ -150,8 +150,7 @@ pub struct WindowAttributes {
     pub resize_increments: Option<Size>,
     pub content_protected: bool,
     pub window_level: WindowLevel,
-    #[cfg(feature = "rwh_06")]
-    pub parent_window: Option<rwh_06::RawWindowHandle>,
+    pub(crate) parent_window: Option<platform_impl::OwnedWindowHandle>,
     pub active: bool,
 }
 
@@ -176,7 +175,6 @@ impl Default for WindowAttributes {
             preferred_theme: None,
             resize_increments: None,
             content_protected: false,
-            #[cfg(feature = "rwh_06")]
             parent_window: None,
             active: true,
         }
@@ -461,11 +459,9 @@ impl WindowBuilder {
     /// - **Android / iOS / Wayland / Web:** Unsupported.
     #[cfg(feature = "rwh_06")]
     #[inline]
-    pub unsafe fn with_parent_window(
-        mut self,
-        parent_window: Option<rwh_06::RawWindowHandle>,
-    ) -> Self {
-        self.window.parent_window = parent_window;
+    pub fn with_parent_window(mut self, parent_window: Option<rwh_06::WindowHandle<'_>>) -> Self {
+        self.window.parent_window =
+            parent_window.map(platform_impl::OwnedWindowHandle::new_parent_window);
         self
     }
 
