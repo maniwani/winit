@@ -50,28 +50,29 @@ use windows_sys::Win32::{
         },
         WindowsAndMessaging::{
             CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
-            GetCursorPos, GetMenu, GetMessageW, KillTimer, LoadCursorW, PeekMessageW, PostMessageW,
-            RegisterClassExW, RegisterWindowMessageA, SetCursor, SetTimer, SetWindowPos,
-            TranslateMessage, CREATESTRUCTW, GIDC_ARRIVAL, GIDC_REMOVAL, GWL_STYLE, GWL_USERDATA,
-            HTCAPTION, HTCLIENT, MINMAXINFO, MNC_CLOSE, MSG, NCCALCSIZE_PARAMS, PM_REMOVE, PT_PEN,
-            PT_TOUCH, RI_KEY_E0, RI_KEY_E1, RI_MOUSE_HWHEEL, RI_MOUSE_WHEEL, SC_MINIMIZE,
-            SC_RESTORE, SIZE_MAXIMIZED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-            WHEEL_DELTA, WINDOWPOS, WM_CAPTURECHANGED, WM_CLOSE, WM_CREATE, WM_DESTROY,
-            WM_DPICHANGED, WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_IME_COMPOSITION,
-            WM_IME_ENDCOMPOSITION, WM_IME_SETCONTEXT, WM_IME_STARTCOMPOSITION, WM_INPUT,
-            WM_INPUT_DEVICE_CHANGE, WM_KEYDOWN, WM_KEYUP, WM_KILLFOCUS, WM_LBUTTONDOWN,
-            WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MENUCHAR, WM_MOUSEHWHEEL, WM_MOUSEMOVE,
-            WM_MOUSEWHEEL, WM_NCACTIVATE, WM_NCCALCSIZE, WM_NCCREATE, WM_NCDESTROY,
-            WM_NCLBUTTONDOWN, WM_PAINT, WM_POINTERDOWN, WM_POINTERUP, WM_POINTERUPDATE,
-            WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS, WM_SETTINGCHANGE, WM_SIZE,
-            WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TOUCH, WM_WINDOWPOSCHANGED,
-            WM_WINDOWPOSCHANGING, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW, WS_EX_LAYERED,
-            WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_OVERLAPPED, WS_POPUP,
-            WS_VISIBLE,
+            GetCursorPos, GetMenu, GetMessageTime, GetMessageW, KillTimer, LoadCursorW,
+            PeekMessageW, PostMessageW, RegisterClassExW, RegisterWindowMessageA, SetCursor,
+            SetTimer, SetWindowPos, TranslateMessage, CREATESTRUCTW, GIDC_ARRIVAL, GIDC_REMOVAL,
+            GWL_STYLE, GWL_USERDATA, HTCAPTION, HTCLIENT, MINMAXINFO, MNC_CLOSE, MSG,
+            NCCALCSIZE_PARAMS, PM_REMOVE, PT_PEN, PT_TOUCH, RI_KEY_E0, RI_KEY_E1, RI_MOUSE_HWHEEL,
+            RI_MOUSE_WHEEL, SC_MINIMIZE, SC_RESTORE, SIZE_MAXIMIZED, SWP_NOACTIVATE, SWP_NOMOVE,
+            SWP_NOSIZE, SWP_NOZORDER, WHEEL_DELTA, WINDOWPOS, WM_CAPTURECHANGED, WM_CLOSE,
+            WM_CREATE, WM_DESTROY, WM_DPICHANGED, WM_ENTERSIZEMOVE, WM_EXITSIZEMOVE,
+            WM_GETMINMAXINFO, WM_IME_COMPOSITION, WM_IME_ENDCOMPOSITION, WM_IME_SETCONTEXT,
+            WM_IME_STARTCOMPOSITION, WM_INPUT, WM_INPUT_DEVICE_CHANGE, WM_KEYDOWN, WM_KEYUP,
+            WM_KILLFOCUS, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MENUCHAR,
+            WM_MOUSEHWHEEL, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_NCACTIVATE, WM_NCCALCSIZE, WM_NCCREATE,
+            WM_NCDESTROY, WM_NCLBUTTONDOWN, WM_PAINT, WM_POINTERDOWN, WM_POINTERUP,
+            WM_POINTERUPDATE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SETCURSOR, WM_SETFOCUS,
+            WM_SETTINGCHANGE, WM_SIZE, WM_SYSCOMMAND, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TOUCH,
+            WM_WINDOWPOSCHANGED, WM_WINDOWPOSCHANGING, WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSEXW,
+            WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_OVERLAPPED,
+            WS_POPUP, WS_VISIBLE,
         },
     },
 };
 
+use crate::platform_impl::platform::util::run_with_timer_resolution;
 use crate::{
     dpi::{PhysicalPosition, PhysicalSize},
     error::EventLoopError,
@@ -251,7 +252,7 @@ impl<T: 'static> EventLoop<T> {
     where
         F: FnMut(Event<T>, &RootELW<T>),
     {
-        self.run_on_demand(event_handler)
+        run_with_timer_resolution(1, || self.run_on_demand(event_handler))
     }
 
     pub fn run_on_demand<F>(&mut self, mut event_handler: F) -> Result<(), EventLoopError>
@@ -499,6 +500,10 @@ impl<T: 'static> EventLoop<T> {
                 break;
             }
         }
+
+        // Save the latest message timestamp. Any pending messages must have a newer timestamp.
+        // TODO: Check if this holds with multiple active windows.
+        runner.from_msg_timestamp.set(runner.to_msg_timestamp.get());
     }
 
     pub fn create_proxy(&self) -> EventLoopProxy<T> {
@@ -727,6 +732,7 @@ impl<T: 'static> Clone for EventLoopProxy<T> {
 }
 
 impl<T: 'static> EventLoopProxy<T> {
+    // TODO: if all events need Instant, this is where to add it
     pub fn send_event(&self, event: T) -> Result<(), EventLoopClosed<T>> {
         unsafe {
             if PostMessageW(self.target_window, USER_EVENT_MSG_ID.get(), 0, 0) != false.into() {
@@ -915,7 +921,7 @@ fn normalize_pointer_pressure(pressure: u32) -> Option<Force> {
 
 /// Emit a `ModifiersChanged` event whenever modifiers have changed.
 /// Returns the current modifier state
-fn update_modifiers<T>(window: HWND, userdata: &WindowData<T>) {
+fn update_modifiers<T>(window: HWND, userdata: &WindowData<T>, msg_instant: Instant) {
     use crate::event::WindowEvent::ModifiersChanged;
 
     let modifiers = {
@@ -933,33 +939,37 @@ fn update_modifiers<T>(window: HWND, userdata: &WindowData<T>) {
         userdata.send_event(Event::WindowEvent {
             window_id: RootWindowId(WindowId(window)),
             event: ModifiersChanged(modifiers.into()),
+            time: msg_instant,
         });
     }
 }
 
-unsafe fn gain_active_focus<T>(window: HWND, userdata: &WindowData<T>) {
+unsafe fn gain_active_focus<T>(window: HWND, userdata: &WindowData<T>, msg_instant: Instant) {
     use crate::event::WindowEvent::Focused;
 
-    update_modifiers(window, userdata);
+    update_modifiers(window, userdata, msg_instant);
 
     userdata.send_event(Event::WindowEvent {
         window_id: RootWindowId(WindowId(window)),
         event: Focused(true),
+        time: msg_instant,
     });
 }
 
-unsafe fn lose_active_focus<T>(window: HWND, userdata: &WindowData<T>) {
+unsafe fn lose_active_focus<T>(window: HWND, userdata: &WindowData<T>, msg_instant: Instant) {
     use crate::event::WindowEvent::{Focused, ModifiersChanged};
 
     userdata.window_state_lock().modifiers_state = ModifiersState::empty();
     userdata.send_event(Event::WindowEvent {
         window_id: RootWindowId(WindowId(window)),
         event: ModifiersChanged(ModifiersState::empty().into()),
+        time: msg_instant,
     });
 
     userdata.send_event(Event::WindowEvent {
         window_id: RootWindowId(WindowId(window)),
         event: Focused(false),
+        time: msg_instant,
     });
 }
 
@@ -1038,10 +1048,15 @@ unsafe fn public_window_callback_inner<T: 'static>(
 ) -> LRESULT {
     let mut result = ProcResult::DefWindowProc(wparam);
 
+    let msg_time = unsafe { GetMessageTime() };
+    let msg_instant = userdata
+        .event_loop_runner
+        .convert_message_time_to_instant(msg_time);
+
     // Send new modifiers before sending key events.
     let mods_changed_callback = || match msg {
         WM_KEYDOWN | WM_SYSKEYDOWN | WM_KEYUP | WM_SYSKEYUP => {
-            update_modifiers(window, userdata);
+            update_modifiers(window, userdata, msg_instant);
             result = ProcResult::Value(0);
         }
         _ => (),
@@ -1065,6 +1080,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                     event: event.event,
                     is_synthetic: event.is_synthetic,
                 },
+                time: msg_instant,
             });
         }
     };
@@ -1146,6 +1162,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
                 event: CloseRequested,
+                time: msg_instant,
             });
             result = ProcResult::Value(0);
         }
@@ -1156,6 +1173,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
                 event: Destroyed,
+                time: msg_instant,
             });
             result = ProcResult::Value(0);
         }
@@ -1177,6 +1195,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                 userdata.send_event(Event::WindowEvent {
                     window_id: RootWindowId(WindowId(window)),
                     event: WindowEvent::RedrawRequested,
+                    time: msg_instant,
                 });
             }
 
@@ -1278,6 +1297,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                 userdata.send_event(Event::WindowEvent {
                     window_id: RootWindowId(WindowId(window)),
                     event: Moved(physical_position),
+                    time: msg_instant,
                 });
             }
 
@@ -1294,6 +1314,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
             let event = Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
                 event: Resized(physical_size),
+                time: msg_instant,
             };
 
             {
@@ -1323,6 +1344,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                 userdata.send_event(Event::WindowEvent {
                     window_id: RootWindowId(WindowId(window)),
                     event: WindowEvent::Ime(Ime::Enabled),
+                    time: msg_instant,
                 });
             }
 
@@ -1343,6 +1365,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                     userdata.send_event(Event::WindowEvent {
                         window_id: RootWindowId(WindowId(window)),
                         event: WindowEvent::Ime(Ime::Preedit(String::new(), None)),
+                        time: msg_instant,
                     });
                 }
 
@@ -1355,10 +1378,12 @@ unsafe fn public_window_callback_inner<T: 'static>(
                         userdata.send_event(Event::WindowEvent {
                             window_id: RootWindowId(WindowId(window)),
                             event: WindowEvent::Ime(Ime::Preedit(String::new(), None)),
+                            time: msg_instant,
                         });
                         userdata.send_event(Event::WindowEvent {
                             window_id: RootWindowId(WindowId(window)),
                             event: WindowEvent::Ime(Ime::Commit(text)),
+                            time: msg_instant,
                         });
                     }
                 }
@@ -1374,6 +1399,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                         userdata.send_event(Event::WindowEvent {
                             window_id: RootWindowId(WindowId(window)),
                             event: WindowEvent::Ime(Ime::Preedit(text, cursor_range)),
+                            time: msg_instant,
                         });
                     }
                 }
@@ -1397,10 +1423,12 @@ unsafe fn public_window_callback_inner<T: 'static>(
                         userdata.send_event(Event::WindowEvent {
                             window_id: RootWindowId(WindowId(window)),
                             event: WindowEvent::Ime(Ime::Preedit(String::new(), None)),
+                            time: msg_instant,
                         });
                         userdata.send_event(Event::WindowEvent {
                             window_id: RootWindowId(WindowId(window)),
                             event: WindowEvent::Ime(Ime::Commit(text)),
+                            time: msg_instant,
                         });
                     }
                 }
@@ -1410,6 +1438,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                 userdata.send_event(Event::WindowEvent {
                     window_id: RootWindowId(WindowId(window)),
                     event: WindowEvent::Ime(Ime::Disabled),
+                    time: msg_instant,
                 });
             }
 
@@ -1470,6 +1499,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                             event: CursorEntered {
                                 device_id: DEVICE_ID,
                             },
+                            time: msg_instant,
                         });
 
                         // Calling TrackMouseEvent in order to receive mouse leave events.
@@ -1493,6 +1523,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                             event: CursorLeft {
                                 device_id: DEVICE_ID,
                             },
+                            time: msg_instant,
                         });
                     }
                     PointerMoveKind::None => drop(w),
@@ -1507,7 +1538,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
             }
 
             if cursor_moved {
-                update_modifiers(window, userdata);
+                update_modifiers(window, userdata, msg_instant);
 
                 userdata.send_event(Event::WindowEvent {
                     window_id: RootWindowId(WindowId(window)),
@@ -1515,6 +1546,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                         device_id: DEVICE_ID,
                         position,
                     },
+                    time: msg_instant,
                 });
             }
 
@@ -1535,6 +1567,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                 event: CursorLeft {
                     device_id: DEVICE_ID,
                 },
+                time: msg_instant,
             });
 
             result = ProcResult::Value(0);
@@ -1546,7 +1579,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
             let value = (wparam >> 16) as i16;
             let value = value as f32 / WHEEL_DELTA as f32;
 
-            update_modifiers(window, userdata);
+            update_modifiers(window, userdata, msg_instant);
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
@@ -1555,6 +1588,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                     delta: LineDelta(0.0, value),
                     phase: TouchPhase::Moved,
                 },
+                time: msg_instant,
             });
 
             result = ProcResult::Value(0);
@@ -1566,7 +1600,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
             let value = (wparam >> 16) as i16;
             let value = -value as f32 / WHEEL_DELTA as f32; // NOTE: inverted! See https://github.com/rust-windowing/winit/pull/2105/
 
-            update_modifiers(window, userdata);
+            update_modifiers(window, userdata, msg_instant);
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
@@ -1575,6 +1609,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                     delta: LineDelta(value, 0.0),
                     phase: TouchPhase::Moved,
                 },
+                time: msg_instant,
             });
 
             result = ProcResult::Value(0);
@@ -1599,7 +1634,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
 
             unsafe { capture_mouse(window, &mut userdata.window_state_lock()) };
 
-            update_modifiers(window, userdata);
+            update_modifiers(window, userdata, msg_instant);
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
@@ -1608,6 +1643,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                     state: Pressed,
                     button: Left,
                 },
+                time: msg_instant,
             });
             result = ProcResult::Value(0);
         }
@@ -1619,7 +1655,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
 
             unsafe { release_mouse(userdata.window_state_lock()) };
 
-            update_modifiers(window, userdata);
+            update_modifiers(window, userdata, msg_instant);
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
@@ -1628,6 +1664,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                     state: Released,
                     button: Left,
                 },
+                time: msg_instant,
             });
             result = ProcResult::Value(0);
         }
@@ -1639,7 +1676,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
 
             unsafe { capture_mouse(window, &mut userdata.window_state_lock()) };
 
-            update_modifiers(window, userdata);
+            update_modifiers(window, userdata, msg_instant);
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
@@ -1648,6 +1685,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                     state: Pressed,
                     button: Right,
                 },
+                time: msg_instant,
             });
             result = ProcResult::Value(0);
         }
@@ -1659,7 +1697,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
 
             unsafe { release_mouse(userdata.window_state_lock()) };
 
-            update_modifiers(window, userdata);
+            update_modifiers(window, userdata, msg_instant);
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
@@ -1668,6 +1706,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                     state: Released,
                     button: Right,
                 },
+                time: msg_instant,
             });
             result = ProcResult::Value(0);
         }
@@ -1679,7 +1718,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
 
             unsafe { capture_mouse(window, &mut userdata.window_state_lock()) };
 
-            update_modifiers(window, userdata);
+            update_modifiers(window, userdata, msg_instant);
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
@@ -1688,6 +1727,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                     state: Pressed,
                     button: Middle,
                 },
+                time: msg_instant,
             });
             result = ProcResult::Value(0);
         }
@@ -1699,7 +1739,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
 
             unsafe { release_mouse(userdata.window_state_lock()) };
 
-            update_modifiers(window, userdata);
+            update_modifiers(window, userdata, msg_instant);
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
@@ -1708,6 +1748,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                     state: Released,
                     button: Middle,
                 },
+                time: msg_instant,
             });
             result = ProcResult::Value(0);
         }
@@ -1721,7 +1762,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
 
             unsafe { capture_mouse(window, &mut userdata.window_state_lock()) };
 
-            update_modifiers(window, userdata);
+            update_modifiers(window, userdata, msg_instant);
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
@@ -1734,6 +1775,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                         _ => Other(xbutton),
                     },
                 },
+                time: msg_instant,
             });
             result = ProcResult::Value(0);
         }
@@ -1747,7 +1789,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
 
             unsafe { release_mouse(userdata.window_state_lock()) };
 
-            update_modifiers(window, userdata);
+            update_modifiers(window, userdata, msg_instant);
 
             userdata.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(window)),
@@ -1760,6 +1802,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                         _ => Other(xbutton),
                     },
                 },
+                time: msg_instant,
             });
             result = ProcResult::Value(0);
         }
@@ -1818,6 +1861,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                             id: input.dwID as u64,
                             device_id: DEVICE_ID,
                         }),
+                        time: msg_instant,
                     });
                 }
             }
@@ -1966,6 +2010,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                             id: pointer_info.pointerId as u64,
                             device_id: DEVICE_ID,
                         }),
+                        time: msg_instant,
                     });
                 }
 
@@ -1979,9 +2024,9 @@ unsafe fn public_window_callback_inner<T: 'static>(
             let active_focus_changed = userdata.window_state_lock().set_active(is_active);
             if active_focus_changed {
                 if is_active {
-                    unsafe { gain_active_focus(window, userdata) };
+                    unsafe { gain_active_focus(window, userdata, msg_instant) };
                 } else {
-                    unsafe { lose_active_focus(window, userdata) };
+                    unsafe { lose_active_focus(window, userdata, msg_instant) };
                 }
             }
             result = ProcResult::DefWindowProc(wparam);
@@ -1990,7 +2035,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
         WM_SETFOCUS => {
             let active_focus_changed = userdata.window_state_lock().set_focused(true);
             if active_focus_changed {
-                unsafe { gain_active_focus(window, userdata) };
+                unsafe { gain_active_focus(window, userdata, msg_instant) };
             }
             result = ProcResult::Value(0);
         }
@@ -1998,7 +2043,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
         WM_KILLFOCUS => {
             let active_focus_changed = userdata.window_state_lock().set_focused(false);
             if active_focus_changed {
-                unsafe { lose_active_focus(window, userdata) };
+                unsafe { lose_active_focus(window, userdata, msg_instant) };
             }
             result = ProcResult::Value(0);
         }
@@ -2137,6 +2182,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                     scale_factor: new_scale_factor,
                     inner_size_writer: InnerSizeWriter::new(Arc::downgrade(&new_inner_size)),
                 },
+                time: msg_instant,
             });
 
             let new_physical_inner_size = *new_inner_size.lock().unwrap();
@@ -2289,6 +2335,7 @@ unsafe fn public_window_callback_inner<T: 'static>(
                     userdata.send_event(Event::WindowEvent {
                         window_id: RootWindowId(WindowId(window)),
                         event: ThemeChanged(new_theme),
+                        time: msg_instant,
                     });
                 }
             }
@@ -2347,6 +2394,11 @@ unsafe extern "system" fn thread_event_target_callback<T: 'static>(
 
     let mut userdata_removed = false;
 
+    let msg_time = unsafe { GetMessageTime() };
+    let msg_instant = userdata
+        .event_loop_runner
+        .convert_message_time_to_instant(msg_time);
+
     // I decided to bind the closure to `callback` and pass it to catch_unwind rather than passing
     // the closure to catch_unwind directly so that the match body indendation wouldn't change and
     // the git blame and history would be preserved.
@@ -2372,6 +2424,7 @@ unsafe extern "system" fn thread_event_target_callback<T: 'static>(
             userdata.send_event(Event::DeviceEvent {
                 device_id: wrap_device_id(lparam as u32),
                 event,
+                time: msg_instant,
             });
 
             0
@@ -2379,7 +2432,7 @@ unsafe extern "system" fn thread_event_target_callback<T: 'static>(
 
         WM_INPUT => {
             if let Some(data) = raw_input::get_raw_input_data(lparam as _) {
-                unsafe { handle_raw_input(&userdata, data) };
+                unsafe { handle_raw_input(&userdata, data, msg_instant) };
             }
 
             unsafe { DefWindowProcW(window, msg, wparam, lparam) }
@@ -2411,7 +2464,11 @@ unsafe extern "system" fn thread_event_target_callback<T: 'static>(
     result
 }
 
-unsafe fn handle_raw_input<T: 'static>(userdata: &ThreadMsgTargetData<T>, data: RAWINPUT) {
+unsafe fn handle_raw_input<T: 'static>(
+    userdata: &ThreadMsgTargetData<T>,
+    data: RAWINPUT,
+    msg_instant: Instant,
+) {
     use crate::event::{
         DeviceEvent::{Button, Key, Motion, MouseMotion, MouseWheel},
         ElementState::{Pressed, Released},
@@ -2431,6 +2488,7 @@ unsafe fn handle_raw_input<T: 'static>(userdata: &ThreadMsgTargetData<T>, data: 
                 userdata.send_event(Event::DeviceEvent {
                     device_id,
                     event: Motion { axis: 0, value: x },
+                    time: msg_instant,
                 });
             }
 
@@ -2438,6 +2496,7 @@ unsafe fn handle_raw_input<T: 'static>(userdata: &ThreadMsgTargetData<T>, data: 
                 userdata.send_event(Event::DeviceEvent {
                     device_id,
                     event: Motion { axis: 1, value: y },
+                    time: msg_instant,
                 });
             }
 
@@ -2445,6 +2504,7 @@ unsafe fn handle_raw_input<T: 'static>(userdata: &ThreadMsgTargetData<T>, data: 
                 userdata.send_event(Event::DeviceEvent {
                     device_id,
                     event: MouseMotion { delta: (x, y) },
+                    time: msg_instant,
                 });
             }
         }
@@ -2458,6 +2518,7 @@ unsafe fn handle_raw_input<T: 'static>(userdata: &ThreadMsgTargetData<T>, data: 
                 event: MouseWheel {
                     delta: LineDelta(0.0, delta),
                 },
+                time: msg_instant,
             });
         }
         if util::has_flag(button_flags as u32, RI_MOUSE_HWHEEL) {
@@ -2468,6 +2529,7 @@ unsafe fn handle_raw_input<T: 'static>(userdata: &ThreadMsgTargetData<T>, data: 
                 event: MouseWheel {
                     delta: LineDelta(delta, 0.0),
                 },
+                time: msg_instant,
             });
         }
 
@@ -2480,6 +2542,7 @@ unsafe fn handle_raw_input<T: 'static>(userdata: &ThreadMsgTargetData<T>, data: 
                         button: button as _,
                         state,
                     },
+                    time: msg_instant,
                 });
             }
         }
@@ -2591,6 +2654,7 @@ unsafe fn handle_raw_input<T: 'static>(userdata: &ThreadMsgTargetData<T>, data: 
                 physical_key,
                 state,
             }),
+            time: msg_instant,
         });
     }
 }

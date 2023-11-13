@@ -4,6 +4,7 @@ use std::{
     path::PathBuf,
     ptr,
     sync::atomic::{AtomicUsize, Ordering},
+    time::Instant,
 };
 
 use windows_sys::{
@@ -14,7 +15,10 @@ use windows_sys::{
             Com::{IDataObject, DVASPECT_CONTENT, FORMATETC, TYMED_HGLOBAL},
             Ole::{CF_HDROP, DROPEFFECT_COPY, DROPEFFECT_NONE},
         },
-        UI::Shell::{DragFinish, DragQueryFileW, HDROP},
+        UI::{
+            Shell::{DragFinish, DragQueryFileW, HDROP},
+            WindowsAndMessaging::GetMessageTime,
+        },
     },
 };
 
@@ -31,6 +35,7 @@ pub struct FileDropHandlerData {
     refcount: AtomicUsize,
     window: HWND,
     send_event: Box<dyn Fn(Event<()>)>,
+    time_event: Box<dyn Fn(i32) -> Instant>,
     cursor_effect: u32,
     hovered_is_valid: bool, /* If the currently hovered item is not valid there must not be any `HoveredFileCancelled` emitted */
 }
@@ -41,7 +46,11 @@ pub struct FileDropHandler {
 
 #[allow(non_snake_case)]
 impl FileDropHandler {
-    pub fn new(window: HWND, send_event: Box<dyn Fn(Event<()>)>) -> FileDropHandler {
+    pub fn new(
+        window: HWND,
+        send_event: Box<dyn Fn(Event<()>)>,
+        time_event: Box<dyn Fn(i32) -> Instant>,
+    ) -> FileDropHandler {
         let data = Box::new(FileDropHandlerData {
             interface: IDropTarget {
                 lpVtbl: &DROP_TARGET_VTBL as *const IDropTargetVtbl,
@@ -49,6 +58,7 @@ impl FileDropHandler {
             refcount: AtomicUsize::new(1),
             window,
             send_event,
+            time_event,
             cursor_effect: DROPEFFECT_NONE,
             hovered_is_valid: false,
         });
@@ -93,11 +103,16 @@ impl FileDropHandler {
     ) -> HRESULT {
         use crate::event::WindowEvent::HoveredFile;
         let drop_handler = unsafe { Self::from_interface(this) };
+
+        let msg_time = unsafe { GetMessageTime() };
+        let msg_instant = drop_handler.time_event(msg_time);
+
         let hdrop = unsafe {
             Self::iterate_filenames(pDataObj, |filename| {
                 drop_handler.send_event(Event::WindowEvent {
                     window_id: RootWindowId(WindowId(drop_handler.window)),
                     event: HoveredFile(filename),
+                    time: msg_instant,
                 });
             })
         };
@@ -131,10 +146,15 @@ impl FileDropHandler {
     pub unsafe extern "system" fn DragLeave(this: *mut IDropTarget) -> HRESULT {
         use crate::event::WindowEvent::HoveredFileCancelled;
         let drop_handler = unsafe { Self::from_interface(this) };
+
+        let msg_time = unsafe { GetMessageTime() };
+        let msg_instant = drop_handler.time_event(msg_time);
+
         if drop_handler.hovered_is_valid {
             drop_handler.send_event(Event::WindowEvent {
                 window_id: RootWindowId(WindowId(drop_handler.window)),
                 event: HoveredFileCancelled,
+                time: msg_instant,
             });
         }
 
@@ -150,11 +170,16 @@ impl FileDropHandler {
     ) -> HRESULT {
         use crate::event::WindowEvent::DroppedFile;
         let drop_handler = unsafe { Self::from_interface(this) };
+
+        let msg_time = unsafe { GetMessageTime() };
+        let msg_instant = drop_handler.time_event(msg_time);
+
         let hdrop = unsafe {
             Self::iterate_filenames(pDataObj, |filename| {
                 drop_handler.send_event(Event::WindowEvent {
                     window_id: RootWindowId(WindowId(drop_handler.window)),
                     event: DroppedFile(filename),
+                    time: msg_instant,
                 });
             })
         };
@@ -224,6 +249,10 @@ impl FileDropHandler {
 impl FileDropHandlerData {
     fn send_event(&self, event: Event<()>) {
         (self.send_event)(event);
+    }
+
+    fn time_event(&self, msg_timestamp: i32) -> Instant {
+        (self.time_event)(msg_timestamp)
     }
 }
 

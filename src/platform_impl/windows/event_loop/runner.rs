@@ -5,10 +5,10 @@ use std::{
     mem, panic,
     rc::Rc,
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
-use windows_sys::Win32::Foundation::HWND;
+use windows_sys::Win32::{Foundation::HWND, System::SystemInformation::GetTickCount64};
 
 use crate::{
     dpi::PhysicalSize,
@@ -39,6 +39,10 @@ pub(crate) struct EventLoopRunner<T: 'static> {
     exit: Cell<Option<i32>>,
     runner_state: Cell<RunnerState>,
     last_events_cleared: Cell<Instant>,
+
+    pub(super) from_msg_timestamp: Cell<Timestamp>,
+    pub(super) to_msg_timestamp: Cell<Timestamp>,
+
     event_handler: EventHandler<T>,
     event_buffer: RefCell<VecDeque<BufferedEvent<T>>>,
 
@@ -61,13 +65,30 @@ pub(crate) enum RunnerState {
     Destroyed,
 }
 
+/// See `get_msg_instant`.
+#[derive(Clone, Copy)]
+pub(crate) struct Timestamp {
+    pub(crate) instant: Instant,
+    pub(crate) os_time: u64,
+}
+
+impl Timestamp {
+    pub(crate) fn now() -> Self {
+        Self {
+            instant: Instant::now(),
+            os_time: unsafe { GetTickCount64() },
+        }
+    }
+}
+
 enum BufferedEvent<T: 'static> {
     Event(Event<T>),
-    ScaleFactorChanged(WindowId, f64, PhysicalSize<u32>),
+    ScaleFactorChanged(WindowId, f64, PhysicalSize<u32>, Instant),
 }
 
 impl<T> EventLoopRunner<T> {
     pub(crate) fn new(thread_msg_target: HWND) -> EventLoopRunner<T> {
+        let now = Timestamp::now();
         EventLoopRunner {
             thread_msg_target,
             interrupt_msg_dispatch: Cell::new(false),
@@ -76,6 +97,10 @@ impl<T> EventLoopRunner<T> {
             exit: Cell::new(None),
             panic_error: Cell::new(None),
             last_events_cleared: Cell::new(Instant::now()),
+
+            from_msg_timestamp: Cell::new(now),
+            to_msg_timestamp: Cell::new(now),
+
             event_handler: Cell::new(None),
             event_buffer: RefCell::new(VecDeque::new()),
         }
@@ -118,6 +143,10 @@ impl<T> EventLoopRunner<T> {
             control_flow: _,
             exit,
             last_events_cleared: _,
+
+            from_msg_timestamp: _,
+            to_msg_timestamp: _,
+
             event_handler,
             event_buffer: _,
         } = self;
@@ -126,6 +155,64 @@ impl<T> EventLoopRunner<T> {
         panic_error.set(None);
         exit.set(None);
         event_handler.set(None);
+    }
+}
+
+impl<T> EventLoopRunner<T> {
+    /// Translates the timestamp of the latest message into an [`Instant`].
+    pub fn convert_message_time_to_instant(&self, msg_timestamp: i32) -> Instant {
+        let now = Timestamp::now();
+        let prev = self.from_msg_timestamp.get();
+        // `to_msg_timestamp` will become `from_msg_timestamp` when about to wait again
+        self.to_msg_timestamp.set(now);
+
+        let prev_instant = prev.instant;
+        let prev_millis_u64 = prev.os_time;
+
+        let now_instant = now.instant;
+        let now_millis_u64 = now.os_time;
+
+        // This cast from signed to unsigned integer is valid according to Microsoft.
+        // See: https://devblogs.microsoft.com/oldnewthing/20140122-00/?p=2013
+        let msg_millis_u32 = msg_timestamp as u32;
+
+        // Compute 64-bit message timestamp. Doing it like this is valid as long as it hasn't been more
+        // than `u32::MAX` milliseconds (49d17h) since the message was created.
+        let now_millis_u32 = (now_millis_u64 & 0xFFFFFFFF) as u32;
+        let elapsed_millis = now_millis_u32.wrapping_sub(msg_millis_u32) as u64;
+        let msg_millis_u64 = (now_millis_u64 - elapsed_millis).max(prev_millis_u64);
+
+        // Use linear interpolation to calculate the corresponding `Instant`.
+        let prev_to_msg = Duration::from_millis(msg_millis_u64 - prev_millis_u64);
+        let prev_to_now = Duration::from_millis(now_millis_u64 - prev_millis_u64);
+
+        let fraction = if prev_to_now.is_zero() {
+            0.0
+        } else {
+            prev_to_msg.as_secs_f64() / prev_to_now.as_secs_f64()
+        };
+
+        debug_assert!(fraction >= 0.0 && fraction <= 1.0);
+        let msg_instant = prev_instant + (now_instant - prev_instant).mul_f64(fraction);
+
+        // println!("");
+        // println!(
+        //     "prev: Integer {{ t: {:.4?}s }}",
+        //     prev_millis_u64 as f64 * 0.001
+        // );
+        // println!(
+        //     "msg: Integer {{ t: {:.4?}s }}",
+        //     msg_millis_u64 as f64 * 0.001
+        // );
+        // println!(
+        //     "now: Integer {{ t: {:.4?}s }}",
+        //     now_millis_u64 as f64 * 0.001
+        // );
+        // println!("prev: {:.4?}", prev_instant);
+        // println!("msg: {:.4?}", msg_instant);
+        // println!("now: {:.4?}", now_instant);
+
+        msg_instant
     }
 }
 
@@ -252,7 +339,7 @@ impl<T> EventLoopRunner<T> {
     fn dispatch_buffered_events(&self) {
         loop {
             // We do this instead of using a `while let` loop because if we use a `while let`
-            // loop the reference returned `borrow_mut()` doesn't get dropped until the end
+            // loop the reference returned by `borrow_mut()` doesn't get dropped until the end
             // of the loop's body and attempts to add events to the event buffer while in
             // `process_event` will fail.
             let buffered_event_opt = self.event_buffer.borrow_mut().pop_front();
@@ -381,6 +468,7 @@ impl<T> BufferedEvent<T> {
                         inner_size_writer,
                     },
                 window_id,
+                time,
             } => BufferedEvent::ScaleFactorChanged(
                 window_id,
                 scale_factor,
@@ -390,6 +478,7 @@ impl<T> BufferedEvent<T> {
                     .unwrap()
                     .lock()
                     .unwrap(),
+                time,
             ),
             event => BufferedEvent::Event(event),
         }
@@ -398,7 +487,7 @@ impl<T> BufferedEvent<T> {
     pub fn dispatch_event(self, dispatch: impl FnOnce(Event<T>)) {
         match self {
             Self::Event(event) => dispatch(event),
-            Self::ScaleFactorChanged(window_id, scale_factor, new_inner_size) => {
+            Self::ScaleFactorChanged(window_id, scale_factor, new_inner_size, time) => {
                 let new_inner_size = Arc::new(Mutex::new(new_inner_size));
                 dispatch(Event::WindowEvent {
                     window_id,
@@ -406,6 +495,7 @@ impl<T> BufferedEvent<T> {
                         scale_factor,
                         inner_size_writer: InnerSizeWriter::new(Arc::downgrade(&new_inner_size)),
                     },
+                    time,
                 });
                 let inner_size = *new_inner_size.lock().unwrap();
                 drop(new_inner_size);

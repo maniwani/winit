@@ -1127,6 +1127,11 @@ impl<'a, T: 'static> InitData<'a, T> {
             }
 
             let file_drop_runner = self.event_loop.runner_shared.clone();
+            let time_event = Box::new(move |msg_timestamp: i32| {
+                file_drop_runner.convert_message_time_to_instant(msg_timestamp)
+            });
+
+            let file_drop_runner = self.event_loop.runner_shared.clone();
             let file_drop_handler = FileDropHandler::new(
                 win.window.0,
                 Box::new(move |event| {
@@ -1134,6 +1139,7 @@ impl<'a, T: 'static> InitData<'a, T> {
                         file_drop_runner.send_event(e)
                     }
                 }),
+                time_event,
             );
 
             let handler_interface_ptr =

@@ -1,6 +1,6 @@
 use std::{
     ffi::{c_void, OsStr, OsString},
-    io,
+    fmt, io,
     iter::once,
     mem,
     ops::BitAnd,
@@ -15,6 +15,7 @@ use windows_sys::{
     Win32::{
         Foundation::{BOOL, HMODULE, HWND, RECT},
         Graphics::Gdi::{ClientToScreen, HMONITOR},
+        Media::{timeBeginPeriod, timeEndPeriod, TIMERR_NOCANDO, TIMERR_NOERROR},
         System::{
             LibraryLoader::{GetProcAddress, LoadLibraryA},
             SystemServices::IMAGE_DOS_HEADER,
@@ -191,6 +192,110 @@ pub(crate) fn to_windows_cursor(cursor: CursorIcon) -> PCWSTR {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct WindowsVersion {
+    major: u32,
+    minor: u32,
+    build: u32,
+}
+
+impl fmt::Debug for WindowsVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Microsoft Windows [Version {}.{}.{}]",
+            self.major, self.minor, self.build
+        )
+    }
+}
+
+impl fmt::Display for WindowsVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Microsoft Windows [Version {}.{}.{}]",
+            self.major, self.minor, self.build
+        )
+    }
+}
+
+impl WindowsVersion {
+    const fn new(major: u32, minor: u32, build: u32) -> Self {
+        Self {
+            major,
+            minor,
+            build,
+        }
+    }
+
+    pub fn get() -> Option<Self> {
+        // RtlGetNtVersionNumbers reports the true OS version tuple and has worked since Windows XP.
+        // https://web.archive.org/web/20230130104017/https://dennisbabkin.com/blog/?t=how-to-tell-the-real-version-of-windows-your-app-is-running-on
+        GET_NT_VERSION_NUMBERS.map(|get_nt_version_numbers| {
+            let mut major: u32 = 0;
+            let mut minor: u32 = 0;
+            let mut build: u32 = 0;
+
+            // SAFETY: FFI
+            unsafe { get_nt_version_numbers(&mut major, &mut minor, &mut build) };
+
+            // The upper four bits in `build` are reserved to describe the type of OS build, 0xC
+            // for a "checked" (debug) build and 0xF for a "free" (production) build. We need to
+            // zero these bits to isolate the build number.
+            build &= 0x0FFFFFFF;
+
+            Self {
+                major,
+                minor,
+                build,
+            }
+        })
+    }
+}
+
+/// Runs `f` with the system timer resolution (period in milliseconds).
+///
+/// This is important to `winit` because it controls the resolution of [`GetTickCount`], the
+/// "clock" that Windows uses to timestamp its events ([`GetMessageTime`]).
+///
+/// The default resolution is 15.6ms (64 interrupts per second), but many user applications will
+/// want a much higher resolution (1ms is the highest resolution possible).
+///
+/// [`GetTickCount`]: windows_sys::Windows::Win32::System::SystemInformation::GetTickCount
+/// [`GetMessageTime`]: windows_sys::Windows::Win32::UI::WindowsAndMessaging::GetMessageTime
+pub fn run_with_timer_resolution<F, T>(millis: u32, f: F) -> T
+where
+    F: FnOnce() -> T,
+{
+    // Prior to Windows 10, version 2004, `timeBeginPeriod` affected a *global* setting, which can
+    // result in significantly higher power consumption.
+    //
+    // See:
+    // - https://learn.microsoft.com/en-us/windows/win32/api/timeapi/nf-timeapi-timebeginperiod
+    // - https://randomascii.wordpress.com/2013/07/08/windows-timer-resolution-megawatts-wasted/
+    const BASE_VERSION: WindowsVersion = WindowsVersion::new(10, 0, 2004);
+    if WindowsVersion::get().is_some_and(|user_version| user_version >= BASE_VERSION) {
+        // SAFETY: FFI
+        match unsafe { timeBeginPeriod(millis) } {
+            TIMERR_NOERROR => {
+                let result = f();
+
+                // SAFETY: FFI
+                unsafe { timeEndPeriod(millis) };
+
+                return result;
+            }
+            TIMERR_NOCANDO => {
+                panic!("`millis` is out of range");
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    // run without changing the timer resolution
+    f()
+}
+
 // Helper function to dynamically load function pointer.
 // `library` and `function` must be zero-terminated.
 pub(super) fn get_function_impl(library: &str, function: &str) -> Option<*const c_void> {
@@ -236,6 +341,11 @@ pub type AdjustWindowRectExForDpi = unsafe extern "system" fn(
     dwExStyle: u32,
     dpi: u32,
 ) -> BOOL;
+pub type RtlGetNtVersionNumbers = unsafe extern "system" fn(
+    major_version: *mut u32,
+    minor_version: *mut u32,
+    build_number: *mut u32,
+);
 
 pub static GET_DPI_FOR_WINDOW: Lazy<Option<GetDpiForWindow>> =
     Lazy::new(|| get_function!("user32.dll", GetDpiForWindow));
@@ -251,3 +361,5 @@ pub static SET_PROCESS_DPI_AWARENESS: Lazy<Option<SetProcessDpiAwareness>> =
     Lazy::new(|| get_function!("shcore.dll", SetProcessDpiAwareness));
 pub static SET_PROCESS_DPI_AWARE: Lazy<Option<SetProcessDPIAware>> =
     Lazy::new(|| get_function!("user32.dll", SetProcessDPIAware));
+pub static GET_NT_VERSION_NUMBERS: Lazy<Option<RtlGetNtVersionNumbers>> =
+    Lazy::new(|| get_function!("ntdll.dll", RtlGetNtVersionNumbers));

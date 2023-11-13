@@ -69,12 +69,14 @@ pub enum Event<T: 'static> {
     WindowEvent {
         window_id: WindowId,
         event: WindowEvent,
+        time: Instant,
     },
 
     /// Emitted when the OS sends an event to a device.
     DeviceEvent {
         device_id: DeviceId,
         event: DeviceEvent,
+        time: Instant,
     },
 
     /// Emitted when an event is sent from [`EventLoopProxy::send_event`](crate::event_loop::EventLoopProxy::send_event)
@@ -259,8 +261,24 @@ impl<T> Event<T> {
         use self::Event::*;
         match self {
             UserEvent(_) => Err(self),
-            WindowEvent { window_id, event } => Ok(WindowEvent { window_id, event }),
-            DeviceEvent { device_id, event } => Ok(DeviceEvent { device_id, event }),
+            WindowEvent {
+                window_id,
+                event,
+                time,
+            } => Ok(WindowEvent {
+                window_id,
+                event,
+                time,
+            }),
+            DeviceEvent {
+                device_id,
+                event,
+                time,
+            } => Ok(DeviceEvent {
+                device_id,
+                event,
+                time,
+            }),
             NewEvents(cause) => Ok(NewEvents(cause)),
             AboutToWait => Ok(AboutToWait),
             LoopExiting => Ok(LoopExiting),
@@ -1144,6 +1162,7 @@ impl PartialEq for InnerSizeWriter {
 mod tests {
     use crate::event;
     use std::collections::{BTreeSet, HashSet};
+    use std::time::Instant;
 
     macro_rules! foreach_event {
         ($closure:expr) => {{
@@ -1170,6 +1189,7 @@ mod tests {
                     x(WindowEvent {
                         window_id: wid,
                         event: wev,
+                        time: Instant::now(),
                     })
                 };
 
@@ -1239,6 +1259,7 @@ mod tests {
                     x(event::Event::DeviceEvent {
                         device_id: did,
                         event: dev_ev,
+                        time: Instant::now(),
                     })
                 };
 
