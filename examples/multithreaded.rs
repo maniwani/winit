@@ -178,7 +178,9 @@ fn main() -> Result<(), impl std::error::Error> {
             elwt.exit()
         }
         match event {
-            Event::WindowEvent { event, window_id } => match event {
+            Event::WindowEvent {
+                event, window_id, ..
+            } => match event {
                 WindowEvent::CloseRequested
                 | WindowEvent::Destroyed
                 | WindowEvent::KeyboardInput {

@@ -37,7 +37,7 @@ fn main() -> Result<(), impl std::error::Error> {
                 match event {
                     Event::WindowEvent {
                         event: WindowEvent::CloseRequested,
-                        window_id,
+                        window_id, ..
                     } if window.id() == window_id => {
                         println!("--------------------------------------------------------- Window {idx} CloseRequested");
                         app.window = None;
@@ -55,7 +55,7 @@ fn main() -> Result<(), impl std::error::Error> {
                 match event {
                     Event::WindowEvent {
                         event: WindowEvent::Destroyed,
-                        window_id,
+                        window_id, ..
                     } if id == window_id => {
                         println!("--------------------------------------------------------- Window {idx} Destroyed");
                         app.window_id = None;

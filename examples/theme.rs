@@ -28,7 +28,10 @@ fn main() -> Result<(), impl std::error::Error> {
     println!("  (D) Dark theme");
 
     event_loop.run(move |event, elwt| {
-        if let Event::WindowEvent { window_id, event } = event {
+        if let Event::WindowEvent {
+            window_id, event, ..
+        } = event
+        {
             match event {
                 WindowEvent::CloseRequested => elwt.exit(),
                 WindowEvent::ThemeChanged(theme) if window_id == window.id() => {

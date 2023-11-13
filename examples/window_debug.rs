@@ -66,7 +66,9 @@ fn main() -> Result<(), impl std::error::Error> {
                 }
                 _ => (),
             },
-            Event::WindowEvent { window_id, event } => match event {
+            Event::WindowEvent {
+                window_id, event, ..
+            } => match event {
                 WindowEvent::KeyboardInput {
                     event:
                         KeyEvent {

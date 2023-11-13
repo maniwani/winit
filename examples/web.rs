@@ -29,6 +29,7 @@ pub fn main() -> Result<(), impl std::error::Error> {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 window_id,
+                ..
             } if window_id == window.id() => elwt.exit(),
             Event::AboutToWait => {
                 window.request_redraw();
@@ -45,6 +46,7 @@ pub fn main() -> Result<(), impl std::error::Error> {
                             },
                         ..
                     },
+                ..
             } if window_id == window.id() && c == "f" => {
                 if window.fullscreen().is_some() {
                     window.set_fullscreen(None);

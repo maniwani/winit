@@ -26,7 +26,9 @@ fn main() -> Result<(), impl std::error::Error> {
         Event::NewEvents(StartCause::Init) => {
             eprintln!("Switch which window is to be dragged by pressing \"x\".")
         }
-        Event::WindowEvent { event, window_id } => match event {
+        Event::WindowEvent {
+            event, window_id, ..
+        } => match event {
             WindowEvent::CloseRequested => elwt.exit(),
             WindowEvent::CursorMoved { position, .. } => cursor_location = Some(position),
             WindowEvent::MouseInput { state, button, .. } => {

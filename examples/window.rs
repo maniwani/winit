@@ -24,7 +24,9 @@ fn main() -> Result<(), impl std::error::Error> {
         println!("{event:?}");
 
         match event {
-            Event::WindowEvent { event, window_id } if window_id == window.id() => match event {
+            Event::WindowEvent {
+                event, window_id, ..
+            } if window_id == window.id() => match event {
                 WindowEvent::CloseRequested => elwt.exit(),
                 WindowEvent::RedrawRequested => {
                     // Notify the windowing system that we'll be presenting to the window.

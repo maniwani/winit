@@ -27,7 +27,10 @@ fn main() -> Result<(), impl std::error::Error> {
     println!("Press N to open a new window.");
 
     event_loop.run(move |event, elwt| {
-        if let Event::WindowEvent { event, window_id } = event {
+        if let Event::WindowEvent {
+            event, window_id, ..
+        } = event
+        {
             match event {
                 WindowEvent::CloseRequested => {
                     println!("Window {window_id:?} has received the signal to close");

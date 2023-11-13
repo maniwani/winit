@@ -54,7 +54,10 @@ fn main() -> Result<(), impl std::error::Error> {
     println!("parent window: {parent_window:?})");
 
     event_loop.run(move |event: Event<()>, elwt| {
-        if let Event::WindowEvent { event, window_id } = event {
+        if let Event::WindowEvent {
+            event, window_id, ..
+        } = event
+        {
             match event {
                 WindowEvent::CloseRequested => {
                     windows.clear();

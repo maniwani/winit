@@ -32,7 +32,10 @@ fn main() -> Result<(), impl std::error::Error> {
     event_loop.listen_device_events(DeviceEvents::Always);
 
     event_loop.run(move |event, elwt| {
-        if let Event::WindowEvent { window_id, event } = event {
+        if let Event::WindowEvent {
+            window_id, event, ..
+        } = event
+        {
             match event {
                 WindowEvent::KeyboardInput {
                     event:

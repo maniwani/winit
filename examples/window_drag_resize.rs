@@ -31,48 +31,52 @@ fn main() -> Result<(), impl std::error::Error> {
         Event::NewEvents(StartCause::Init) => {
             eprintln!("Press 'B' to toggle borderless")
         }
-        Event::WindowEvent { event, .. } => match event {
-            WindowEvent::CloseRequested => elwt.exit(),
-            WindowEvent::CursorMoved { position, .. } => {
-                if !window.is_decorated() {
-                    let new_location =
-                        cursor_resize_direction(window.inner_size(), position, BORDER);
+        Event::WindowEvent { event, time, .. } => {
+            println!("time (msg): {:?}", time);
+            println!("time (now): {:?}", std::time::Instant::now());
+            match event {
+                WindowEvent::CloseRequested => elwt.exit(),
+                WindowEvent::CursorMoved { position, .. } => {
+                    if !window.is_decorated() {
+                        let new_location =
+                            cursor_resize_direction(window.inner_size(), position, BORDER);
 
-                    if new_location != cursor_location {
-                        cursor_location = new_location;
-                        window.set_cursor_icon(cursor_direction_icon(cursor_location))
+                        if new_location != cursor_location {
+                            cursor_location = new_location;
+                            window.set_cursor_icon(cursor_direction_icon(cursor_location))
+                        }
                     }
                 }
-            }
 
-            WindowEvent::MouseInput {
-                state: ElementState::Pressed,
-                button: MouseButton::Left,
-                ..
-            } => {
-                if let Some(dir) = cursor_location {
-                    let _res = window.drag_resize_window(dir);
-                } else if !window.is_decorated() {
-                    let _res = window.drag_window();
+                WindowEvent::MouseInput {
+                    state: ElementState::Pressed,
+                    button: MouseButton::Left,
+                    ..
+                } => {
+                    if let Some(dir) = cursor_location {
+                        let _res = window.drag_resize_window(dir);
+                    } else if !window.is_decorated() {
+                        let _res = window.drag_window();
+                    }
                 }
+                WindowEvent::KeyboardInput {
+                    event:
+                        KeyEvent {
+                            state: ElementState::Released,
+                            logical_key: Key::Character(c),
+                            ..
+                        },
+                    ..
+                } if matches!(c.as_ref(), "B" | "b") => {
+                    border = !border;
+                    window.set_decorations(border);
+                }
+                WindowEvent::RedrawRequested => {
+                    fill::fill_window(&window);
+                }
+                _ => (),
             }
-            WindowEvent::KeyboardInput {
-                event:
-                    KeyEvent {
-                        state: ElementState::Released,
-                        logical_key: Key::Character(c),
-                        ..
-                    },
-                ..
-            } if matches!(c.as_ref(), "B" | "b") => {
-                border = !border;
-                window.set_decorations(border);
-            }
-            WindowEvent::RedrawRequested => {
-                fill::fill_window(&window);
-            }
-            _ => (),
-        },
+        }
 
         _ => (),
     })

@@ -25,7 +25,9 @@ fn main() -> Result<(), impl std::error::Error> {
     let mut has_increments = true;
 
     event_loop.run(move |event, elwt| match event {
-        Event::WindowEvent { event, window_id } if window_id == window.id() => match event {
+        Event::WindowEvent {
+            event, window_id, ..
+        } if window_id == window.id() => match event {
             WindowEvent::CloseRequested => elwt.exit(),
             WindowEvent::KeyboardInput { event, .. }
                 if event.logical_key == NamedKey::Space
